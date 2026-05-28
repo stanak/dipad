@@ -1,4 +1,4 @@
-# tools/check_embedded_manifest.ps1
+﻿# tools/check_embedded_manifest.ps1
 #
 # 与えられた EXE に「埋め込みマニフェスト」があるかを表示します。
 # 空マニフェストが入っている場合 (非想天則 等) は dipad を効かせるために
