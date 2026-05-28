@@ -1,0 +1,23 @@
+Windows Registry Editor Version 5.00
+
+; ============================================================================
+;  dipad インストール用レジストリ
+;
+;  Windows の Side-by-Side (SxS) は、対象 EXE に「埋め込みマニフェスト」が
+;  含まれていると、外部の <exe名>.manifest を完全に無視します。
+;  非想天則 (th123.exe) は中身が空の埋め込みマニフェストを持っているため、
+;  デフォルトのままだと dipad の th123.exe.manifest が読み込まれません。
+;
+;  本キーは Microsoft が公式に文書化している外部マニフェスト優先スイッチで、
+;  値を 1 にすると Windows は外部マニフェストを優先するようになります。
+;
+;    https://learn.microsoft.com/windows/win32/sbscs/application-manifests
+;
+;  - 管理者権限が必要です (HKLM)
+;  - ゲームバイナリ・システム DLL は一切変更しません
+;  - システム全体に影響する設定です。アンインストールするときは
+;    uninstall.reg を実行してください
+; ============================================================================
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\SideBySide]
+"PreferExternalManifest"=dword:00000001

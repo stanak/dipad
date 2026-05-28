@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  dipad generic 64-bit application manifest template.
+
+  使い方:
+  1. このファイルを「<exe名>.manifest」にリネーム
+     例: game.exe → game.exe.manifest
+  2. ゲームと同じフォルダに dipad.dll (x64版) + dipad.manifest と一緒に置く
+  3. 64-bit ゲーム専用です (32-bit ゲーム向けは sample-x86.exe.manifest)
+
+  NOTE: <trustInfo> は意図的に省略。64-bit プロセスは元から UAC ファイル
+  仮想化を受けないので技術的には影響ありませんが、32-bit 用テンプレートと
+  挙動を揃えるため同じ方針を取ります。
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity type="win32"
+                    name="application"
+                    version="1.0.0.0"
+                    processorArchitecture="amd64"/>
+
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32"
+                        name="dipad"
+                        version="0.1.0.0"
+                        processorArchitecture="amd64"/>
+    </dependentAssembly>
+  </dependency>
+</assembly>

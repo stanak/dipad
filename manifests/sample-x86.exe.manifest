@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  dipad generic 32-bit application manifest template.
+
+  使い方:
+  1. このファイルを「<exe名>.manifest」にリネーム
+     例: game.exe → game.exe.manifest
+  2. ゲームと同じフォルダに dipad.dll + dipad.manifest と一緒に置く
+  3. 32-bit ゲーム専用です (64-bit ゲーム向けは sample-x64.exe.manifest)
+
+  NOTE: <trustInfo>/<requestedExecutionLevel> は意図的に省略しています。
+  これを指定するとゲームが "UAC-aware" 扱いとなり、Profile/Replay 等の
+  書き込みが %LOCALAPPDATA%\VirtualStore へリダイレクトされなくなって
+  しまい、既存のセーブデータと辻褄が合わなくなります。
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity type="win32"
+                    name="application"
+                    version="1.0.0.0"
+                    processorArchitecture="x86"/>
+
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32"
+                        name="dipad"
+                        version="0.1.0.0"
+                        processorArchitecture="x86"/>
+    </dependentAssembly>
+  </dependency>
+</assembly>

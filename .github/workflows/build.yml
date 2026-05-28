@@ -1,0 +1,94 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: ${{ matrix.arch }}
+    runs-on: windows-2022
+    strategy:
+      matrix:
+        include:
+          - arch: x86
+            cmake_arch: Win32
+          - arch: x64
+            cmake_arch: x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -A ${{ matrix.cmake_arch }}
+
+      - name: Build (Release)
+        run: cmake --build build --config Release --parallel
+
+      - name: Show artifacts
+        run: |
+          dir build\Release
+          (Get-Item build\Release\dipad.dll).Length
+          Get-Content build\Release\dipad.manifest
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dipad-${{ matrix.arch }}
+          path: |
+            build/Release/dipad.dll
+            build/Release/dipad.manifest
+
+  release:
+    name: Publish Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download x86
+        uses: actions/download-artifact@v4
+        with:
+          name: dipad-x86
+          path: artifacts/x86
+
+      - name: Download x64
+        uses: actions/download-artifact@v4
+        with:
+          name: dipad-x64
+          path: artifacts/x64
+
+      - name: Stage release tree
+        run: |
+          set -e
+          mkdir -p release/dipad/x86 release/dipad/x64 \
+                   release/dipad/manifests release/dipad/install release/dipad/tools
+          cp artifacts/x86/dipad.dll       release/dipad/x86/dipad.dll
+          cp artifacts/x86/dipad.manifest  release/dipad/x86/dipad.manifest
+          cp artifacts/x64/dipad.dll       release/dipad/x64/dipad.dll
+          cp artifacts/x64/dipad.manifest  release/dipad/x64/dipad.manifest
+          cp manifests/th123.exe.manifest      release/dipad/manifests/
+          cp manifests/sample-x86.exe.manifest release/dipad/manifests/
+          cp manifests/sample-x64.exe.manifest release/dipad/manifests/
+          cp manifests/README.md               release/dipad/manifests/
+          cp install/install.reg               release/dipad/install/
+          cp install/uninstall.reg             release/dipad/install/
+          cp install/README.md                 release/dipad/install/
+          cp tools/check_embedded_manifest.ps1 release/dipad/tools/
+          cp README.md LICENSE dipad.ini.sample  release/dipad/
+          cd release && zip -r "../dipad-${GITHUB_REF_NAME}.zip" dipad
+        shell: bash
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dipad-*.zip
+          generate_release_notes: true

@@ -1,0 +1,4 @@
+LIBRARY dipad
+EXPORTS
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow   PRIVATE

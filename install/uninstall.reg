@@ -1,0 +1,17 @@
+Windows Registry Editor Version 5.00
+
+; ============================================================================
+;  dipad アンインストール用レジストリ
+;
+;  install.reg で設定した PreferExternalManifest を削除します。
+;  ゲーム本体側の th123.exe.manifest / dipad.dll / dipad.manifest を削除しただけ
+;  だと、この値は残り続けるため、不要になった時点で本ファイルを実行して
+;  ください。
+;
+;  - 管理者権限が必要です (HKLM)
+;  - 他の用途で PreferExternalManifest を使っている場合は実行しないで
+;    ください (例: 他社の互換シムを利用している場合など)
+; ============================================================================
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\SideBySide]
+"PreferExternalManifest"=-

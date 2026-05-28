@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  dipad application manifest for 東方非想天則 (th123.exe).
+
+  Drop this file next to th123.exe AS-IS. Together with dipad.dll and
+  dipad.manifest (in the same folder), it routes CLSID_DirectInput8
+  to dipad.dll via Reg-Free COM.
+
+  Filename MUST be exactly "th123.exe.manifest".
+
+  NOTE: this manifest deliberately omits <trustInfo>/<requestedExecutionLevel>.
+  Specifying it would mark th123 as a UAC-aware ("modern") application and
+  disable file/registry virtualization, breaking the game's existing
+  Profile/Replay redirection into %LOCALAPPDATA%\VirtualStore. Leaving
+  trustInfo out keeps the legacy virtualization behavior intact.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity type="win32"
+                    name="th123"
+                    version="1.0.0.0"
+                    processorArchitecture="x86"/>
+
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32"
+                        name="dipad"
+                        version="0.1.0.0"
+                        processorArchitecture="x86"/>
+    </dependentAssembly>
+  </dependency>
+</assembly>
