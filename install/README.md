@@ -20,6 +20,19 @@ dipad のインストールに必要なレジストリスクリプトを格納�
 
 確認方法: `tools\check_embedded_manifest.ps1` (本リポジトリ同梱) を実行すると判別できます。
 
+> Releases の ZIP から取り出した `.ps1` には Windows がインターネット由来マークを付けるため、初回実行時に
+> 「このスクリプトはデジタル署名されていないため実行できません」 とブロックされることがあります。
+> その場合は次のいずれかで回避してください (推奨は (a))。
+>
+> ```powershell
+> # (a) 一発実行 (ポリシー変更なし)
+> powershell -ExecutionPolicy Bypass -File .\check_embedded_manifest.ps1 'C:\path\to\game.exe'
+>
+> # (b) ファイルのブロックを解除してから普通に実行
+> Unblock-File .\check_embedded_manifest.ps1
+> .\check_embedded_manifest.ps1 'C:\path\to\game.exe'
+> ```
+
 ## 適用方法
 
 エクスプローラから `install.reg` をダブルクリックし、UAC プロンプトで「はい」を押してください。

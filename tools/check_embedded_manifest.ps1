@@ -6,6 +6,21 @@
 #
 # 使い方:
 #   .\check_embedded_manifest.ps1 'C:\Program Files (x86)\tasofro\th123\th123.exe'
+#
+# 「このスクリプトはデジタル署名されていないため実行できません」と出る場合:
+#   Releases の ZIP から取り出した .ps1 にはインターネット由来マークが付くため、
+#   既定の ExecutionPolicy では実行が止められます。以下のいずれかで回避できます。
+#
+#   (a) 一発実行 (ポリシーを永続的に変更しない・推奨):
+#       powershell -ExecutionPolicy Bypass -File .\check_embedded_manifest.ps1 'C:\path\to\game.exe'
+#
+#   (b) ファイルのブロックを解除してから普通に実行:
+#       Unblock-File .\check_embedded_manifest.ps1
+#       .\check_embedded_manifest.ps1 'C:\path\to\game.exe'
+#
+#   (c) このシェルでだけポリシーを緩める (シェルを閉じれば元に戻る):
+#       Set-ExecutionPolicy -Scope Process Bypass
+#       .\check_embedded_manifest.ps1 'C:\path\to\game.exe'
 
 [CmdletBinding()]
 param(
@@ -22,7 +37,7 @@ Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
-public class X2dPE {
+public class DipadPE {
     [DllImport("kernel32", SetLastError = true)]
     public static extern IntPtr LoadLibraryEx(string p, IntPtr h, uint f);
     [DllImport("kernel32")] public static extern bool FreeLibrary(IntPtr m);
@@ -49,7 +64,7 @@ public class X2dPE {
 
 $found = $false
 foreach ($id in 1..3) {
-    $m = [X2dPE]::Get((Resolve-Path $ExePath).Path, $id)
+    $m = [DipadPE]::Get((Resolve-Path $ExePath).Path, $id)
     if ($m) {
         $found = $true
         $trimmed = $m.Trim()

@@ -21,7 +21,7 @@ std::wstring g_lastLogPath;
 // most games live under C:\Program Files (x86)\ which requires admin to
 // write, and asInvoker hosts (like our test_actctx) do not get the UAC
 // VirtualStore fallback.
-std::wstring GetLocalAppDataX2dDir() {
+std::wstring GetLocalAppDataDipadDir() {
     wchar_t buf[MAX_PATH] = {};
     if (FAILED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, buf))) {
         return L"";
@@ -35,7 +35,7 @@ std::wstring GetLocalAppDataX2dDir() {
 }
 
 std::wstring GetLogPath() {
-    auto dir = GetLocalAppDataX2dDir();
+    auto dir = GetLocalAppDataDipadDir();
     if (dir.empty()) return L"dipad.log";
     return dir + L"dipad.log";
 }
@@ -43,7 +43,7 @@ std::wstring GetLogPath() {
 } // namespace
 
 std::wstring GetLogDirectory() {
-    return GetLocalAppDataX2dDir();
+    return GetLocalAppDataDipadDir();
 }
 
 void InitLogger(bool enabled) {

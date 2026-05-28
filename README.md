@@ -237,6 +237,11 @@ Get-Content "$env:LOCALAPPDATA\dipad\dipad_load.log" -Encoding Unicode
   ```powershell
   .\tools\check_embedded_manifest.ps1 'C:\path\to\game.exe'
   ```
+  > Releases の ZIP から取り出した `.ps1` が ExecutionPolicy で弾かれた場合は、ポリシーを変更せずに
+  > 一発実行できる以下を使ってください:
+  > ```powershell
+  > powershell -ExecutionPolicy Bypass -File .\tools\check_embedded_manifest.ps1 'C:\path\to\game.exe'
+  > ```
 - `install\install.reg` を実行したか確認
 
 ### 十字キーは効くが左スティックが効かない
