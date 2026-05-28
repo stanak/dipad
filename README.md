@@ -258,7 +258,7 @@ Get-Content "$env:LOCALAPPDATA\dipad\dipad_load.log" -Encoding Unicode
 
 ## 名前について
 
-`dipad` = **X**Input to **D**irectInput。短く打てて覚えやすい名前として採用しています。
+`dipad` = **D**irect**I**nput Game**Pad**。短く打てて覚えやすい名前として採用しています。
 
 ## 関連プロジェクト / 参考
 
