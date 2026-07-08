@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(dipad LANGUAGES CXX VERSION 0.1.0)
+project(dipad LANGUAGES CXX VERSION 0.2.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -92,6 +92,18 @@ add_custom_command(TARGET dipad POST_BUILD
         "${CMAKE_CURRENT_BINARY_DIR}/dipad.manifest"
         "$<TARGET_FILE_DIR:dipad>/dipad.manifest"
     COMMENT "Copying dipad.manifest next to dipad.dll"
+)
+
+# The same binary doubles as a dinput8.dll proxy: it exports DirectInput8Create
+# in addition to the COM server entry points. Emit a copy named dinput8.dll so
+# users of the proxy method (games that call DirectInput8Create directly, e.g.
+# 心綺楼 / 憑依華) can just drop that one file into the game folder — no
+# manifests, no registry edits.
+add_custom_command(TARGET dipad POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:dipad>"
+        "$<TARGET_FILE_DIR:dipad>/dinput8.dll"
+    COMMENT "Emitting dinput8.dll proxy copy of dipad.dll"
 )
 
 # ---------------------------------------------------------------------------

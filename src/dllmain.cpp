@@ -146,6 +146,64 @@ DllCanUnloadNow(void) {
 }
 
 // ===========================================================================
+// dinput8.dll proxy entry point
+// ===========================================================================
+//
+// Most DirectInput8 games do not go through COM activation at all: they link
+// dinput8.lib (or LoadLibrary + GetProcAddress) and call DirectInput8Create
+// directly, which never consults the activation context. For those games the
+// manifest approach cannot work. Instead, this binary can be dropped into the
+// game folder under the name "dinput8.dll": the standard DLL search order
+// resolves the application directory before System32, so the game loads us,
+// and we forward to the genuine %SystemRoot%\System32\dinput8.dll (loaded by
+// full path in real_dinput8.cpp, so there is no recursion).
+
+extern "C" HRESULT WINAPI
+DirectInput8Create(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf,
+                   LPVOID* ppvOut, LPUNKNOWN punkOuter) {
+    dipad::EnsureInit();
+    if (!ppvOut) return E_POINTER;
+    *ppvOut = nullptr;
+
+    if (!dipad::LoadRealDInput8() || !dipad::GetReal().DirectInput8Create) {
+        dipad::Log("DirectInput8Create: real dinput8.dll unavailable");
+        return E_FAIL;
+    }
+
+    if (punkOuter) {
+        // Aggregation: DirectInput8Create with an outer unknown returns an
+        // inner IUnknown we cannot transparently wrap. Pass through so the
+        // (vanishingly rare) caller keeps working, just without remapping.
+        dipad::Log("DirectInput8Create: aggregation requested, passthrough");
+        return dipad::GetReal().DirectInput8Create(hinst, dwVersion, riidltf,
+                                                   ppvOut, punkOuter);
+    }
+
+    void* raw = nullptr;
+    HRESULT hr = dipad::GetReal().DirectInput8Create(hinst, dwVersion, riidltf,
+                                                     &raw, nullptr);
+    if (FAILED(hr) || !raw) {
+        dipad::Log("DirectInput8Create: real call failed hr=0x%08lx", hr);
+        return hr;
+    }
+
+    if (IsEqualIID(riidltf, IID_IDirectInput8A)) {
+        *ppvOut = static_cast<IDirectInput8A*>(
+            new dipad::Input8WrapperA(static_cast<IDirectInput8A*>(raw), dipad::g_config));
+        dipad::Log("DirectInput8Create: wrapped IDirectInput8A (proxy path)");
+    } else if (IsEqualIID(riidltf, IID_IDirectInput8W)) {
+        *ppvOut = static_cast<IDirectInput8W*>(
+            new dipad::Input8WrapperW(static_cast<IDirectInput8W*>(raw), dipad::g_config));
+        dipad::Log("DirectInput8Create: wrapped IDirectInput8W (proxy path)");
+    } else {
+        // Unknown interface version: hand back the real object untouched.
+        *ppvOut = raw;
+        dipad::Log("DirectInput8Create: passthrough for unknown IID");
+    }
+    return hr;
+}
+
+// ===========================================================================
 // DllMain
 // ===========================================================================
 

@@ -92,14 +92,22 @@ HRESULT __stdcall Device8WrapperT<W>::SetProperty(REFGUID rguidProp, LPCDIPROPHE
         const DWORD obj   = pr->diph.dwObj;
         const bool  toAll = (how == DIPH_DEVICE);
 
-        auto matchesAxis = [&](DWORD ofs) {
-            return how == DIPH_BYOFFSET && obj == ofs;
+        // DIPH_BYOFFSET identifies the axis by its offset in the app's data
+        // format, which is only meaningful once SetDataFormat has run. The
+        // captured map gives us the app's actual X/Y offsets (DIJOFS_X/Y for
+        // the standard formats, arbitrary for custom ones).
+        const int xOfs = m_map.axisOfs[static_cast<int>(Axis::X)];
+        const int yOfs = m_map.axisOfs[static_cast<int>(Axis::Y)];
+
+        auto matchesAxis = [&](int ofs) {
+            return ofs >= 0 && how == DIPH_BYOFFSET &&
+                   obj == static_cast<DWORD>(ofs);
         };
 
-        if (toAll || matchesAxis(DIJOFS_X)) {
+        if (toAll || matchesAxis(xOfs)) {
             m_xRange = {pr->lMin, pr->lMax, true};
         }
-        if (toAll || matchesAxis(DIJOFS_Y)) {
+        if (toAll || matchesAxis(yOfs)) {
             m_yRange = {pr->lMin, pr->lMax, true};
         }
     }
@@ -121,17 +129,18 @@ HRESULT __stdcall Device8WrapperT<W>::Unacquire() {
 template <bool W>
 HRESULT __stdcall Device8WrapperT<W>::GetDeviceState(DWORD cbData, LPVOID lpvData) {
     HRESULT hr = m_real->GetDeviceState(cbData, lpvData);
-    if (SUCCEEDED(hr) && m_isJoystick && lpvData && cbData == m_dataSize) {
+    if (SUCCEEDED(hr) && m_isGameController && m_map.parsed && lpvData &&
+        cbData == m_map.dataSize) {
         // Order matters:
-        //   1. POV → lX/lY (so the host sees both D-pad and stick as motion).
+        //   1. POV → X/Y (so the host sees both D-pad and stick as motion).
         //   2. Axis → button (so L2/R2-style triggers can be bound as buttons
         //      in games that only understand button input).
         //   3. Debug dump runs LAST and observes the final, post-remap state
         //      so the user can see exactly what the game receives.
-        ApplyPovToStick(lpvData, cbData, m_cfg, m_xRange, m_yRange);
-        ApplyAxisToButtons(lpvData, cbData, m_cfg);
+        ApplyPovToStick(lpvData, m_map, m_cfg, m_xRange, m_yRange);
+        ApplyAxisToButtons(lpvData, m_map, m_cfg);
         if (m_cfg.debugAxisDump) {
-            m_debug.Dump(lpvData, cbData);
+            m_debug.Dump(lpvData, m_map);
         }
     }
     return hr;
@@ -151,13 +160,29 @@ template <bool W>
 HRESULT __stdcall Device8WrapperT<W>::SetDataFormat(LPCDIDATAFORMAT lpdf) {
     HRESULT hr = m_real->SetDataFormat(lpdf);
     if (SUCCEEDED(hr) && lpdf) {
-        m_dataSize = lpdf->dwDataSize;
-        m_isJoystick =
-            (lpdf->dwDataSize == sizeof(DIJOYSTATE) ||
-             lpdf->dwDataSize == sizeof(DIJOYSTATE2));
-        Log("Device8: SetDataFormat dwDataSize=%lu isJoystick=%d",
+        m_map = ParseDataFormat(lpdf);
+
+        // Only remap actual game controllers. Mouse formats (c_dfDIMouse)
+        // also carry X/Y/Z axes and buttons, and we must not inject synthetic
+        // input into them.
+        DIDEVCAPS caps = {};
+        caps.dwSize = sizeof(caps);
+        m_isGameController = false;
+        if (SUCCEEDED(m_real->GetCapabilities(&caps))) {
+            const BYTE type = static_cast<BYTE>(GET_DIDEVICE_TYPE(caps.dwDevType));
+            m_isGameController = (type >= DI8DEVTYPE_JOYSTICK &&
+                                  type <= DI8DEVTYPE_SUPPLEMENTAL &&
+                                  type != DI8DEVTYPE_SCREENPOINTER);
+        }
+
+        Log("Device8: SetDataFormat dwDataSize=%lu parsed=%d gameController=%d "
+            "(xOfs=%d yOfs=%d povs=%d buttons=%zu)",
             static_cast<unsigned long>(lpdf->dwDataSize),
-            static_cast<int>(m_isJoystick));
+            static_cast<int>(m_map.parsed),
+            static_cast<int>(m_isGameController),
+            m_map.axisOfs[static_cast<int>(Axis::X)],
+            m_map.axisOfs[static_cast<int>(Axis::Y)],
+            m_map.povCount, m_map.buttonOfs.size());
     }
     return hr;
 }

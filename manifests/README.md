@@ -1,5 +1,7 @@
 # manifests/
 
+> **注:** このフォルダのマニフェスト群は **マニフェスト方式 (方式B)** 用です。ほとんどのゲームでは `dinput8.dll` をコピーするだけの **プロキシ方式 (方式A)** で足りるので、まず本体 [`README.md`](../README.md) の方式A を参照してください。
+
 dipad は **Reg-Free COM (Side-by-Side Activation Context)** の標準パターンに従って **2 つのマニフェスト** を組み合わせて動作します:
 
 1. **アプリケーションマニフェスト** (`<exe名>.manifest`)

@@ -24,7 +24,7 @@
     <dependentAssembly>
       <assemblyIdentity type="win32"
                         name="dipad"
-                        version="0.1.0.0"
+                        version="0.2.0.0"
                         processorArchitecture="x86"/>
     </dependentAssembly>
   </dependency>

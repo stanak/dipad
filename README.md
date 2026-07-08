@@ -2,40 +2,88 @@
 
 古い `DirectInput8` ゲームで、XInput 系コントローラ (Xbox / Vader 4 Pro 等) の **十字キー** や **L2/R2 トリガー** が反応しない問題を解消する Windows 互換シムです。
 
-> ゲーム本体には **一切** 手を加えません。`dipad.dll` と数個のテキストファイルをゲームフォルダに置くだけで動作します。
+> ゲーム本体には **一切** 手を加えません。ゲームフォルダに `dinput8.dll` (推奨) または `dipad.dll` + マニフェストを置くだけで動作します。
 
 ## このツールが解決する問題
 
-`東方非想天則 / 緋想天 / 心綺楼` をはじめとする、`DirectInput8` 経由でコントローラを読み込む古いゲームでは、以下のような症状が起きがちです。
+`東方非想天則 / 緋想天` (CoCreateInstance 型) や `心綺楼 / 憑依華` など (DirectInput8Create 型) をはじめとする、`DirectInput8` 経由でコントローラを読み込む古いゲームでは、以下のような症状が起きがちです。
 
 - 左スティックは効くが、**十字キーが効かない** (POV ハットを X/Y 軸として読まない)
 - **L2 / R2 トリガーがアナログ軸**として OS から上がってくるため、ボタンとして割り当てできない
 
-`dipad` は **OS とゲームの間に挟まる薄い COM プロバイダ** として動作し、`DirectInput8` の応答をその場で書き換えます。
+`dipad` は **OS とゲームの間に挟まる薄い DirectInput8 互換レイヤ** として動作し、`DirectInput8` の応答をその場で書き換えます。
 
 - **POV ハット → X / Y 軸** 変換 (十字キーで方向入力可能になる)
 - **アナログ軸 → 仮想ボタン** 変換 (L2/R2 などをキーコンフィグでボタン番号として登録可能になる)
 
 ## 「ゲーム MOD」ではありません
 
-`dipad` はゲーム本体のバイナリ・メモリ・データを一切改変しません。仕組みとして使っているのは Microsoft が公式に提供している **Side-by-Side (SxS) Activation Context** (Reg-Free COM) です。これは Windows が `<exe名>.manifest` を読み取り、当該プロセス内でのみ COM クラスの実装先を上書きする標準機能です。
+`dipad` はゲーム本体のバイナリ・メモリ・データを一切改変しません。導入方法は 2 通りあります。
+
+| 方式 | 概要 |
+|---|---|
+| **方式A: dinput8.dll プロキシ** (推奨) | ゲームフォルダに `dinput8.dll` を置くだけ。レジストリ変更・管理者権限・マニフェスト不要 |
+| **方式B: マニフェスト (Reg-Free COM)** | Microsoft の **Side-by-Side (SxS) Activation Context** で COM クラスの実装先を上書き。非想天則・緋想天など一部のゲーム向け |
 
 | 改変対象 | dipad による改変 |
 |---|---|
 | ゲームバイナリ | **なし** |
 | ゲームデータ・セーブデータ | **なし** |
-| システム DLL | **なし** |
+| システム DLL | **なし** (本物は `%SystemRoot%\System32\dinput8.dll` をフルパスで読み込み) |
 | 同フォルダの他 MOD (`d3d9.dll` 系ローダ等) | 共存可能 |
-| HKLM レジストリ | **1 個** (`PreferExternalManifest` のみ。詳細は後述) |
+| HKLM レジストリ | **方式B のみ** (`PreferExternalManifest` 1 個。詳細は後述) |
 
-## インストール (非想天則の場合)
+## インストール
 
-### 必要なもの
+### どちらの方式を選ぶか
+
+迷ったら **まず方式A** を試してください。
+
+1. 方式A の手順で `dinput8.dll` を配置してゲームを起動
+2. `%LOCALAPPDATA%\dipad\dipad_load.log` にエントリが出るか確認
+   - **出る** → 方式A で動作しています
+   - **出ない** → 方式B を試す (または配置ミスを確認)
+
+### 方式A: dinput8.dll プロキシ方式 (推奨・ほとんどのゲーム向け)
+
+`DirectInput8Create()` を直接呼ぶゲーム (心綺楼 / 憑依華など大半の DirectInput8 ゲーム) 向けです。**レジストリ変更・管理者権限・マニフェストは一切不要**です。
+
+#### 手順
+
+1. [Releases](https://github.com/stanak/dipad/releases) から最新の ZIP をダウンロードして展開
+2. ゲームのビット数を確認 (タスクマネージャ → 詳細 → プロセス名に `*32` が付いていれば 32-bit)
+3. ZIP 内の **`x86\dinput8.dll`** または **`x64\dinput8.dll`** を、ゲームの実行ファイル (`*.exe`) と **同じフォルダ** にコピー
+4. (L2/R2 を使う場合) `dipad.ini.sample` を `dipad.ini` にリネームして同じフォルダにコピー
+5. ゲームを起動
+
+#### 注意点
+
+- ゲームフォルダに **既に `dinput8.dll` がある** (他の MOD が使用中) 場合、この方式は使えません → **方式B** を使ってください
+- `d3d9.dll` 系 MOD (ReShade, dgVoodoo 等) とは **共存可能** です
+- 設定ファイルは引き続き **`dipad.ini`** という名前で、シム DLL (`dinput8.dll` または `dipad.dll`) と同じフォルダ (ゲームフォルダ) に置きます
+
+#### ゲームフォルダ構成例 (方式A)
+
+```
+[ゲームフォルダ]
+├── game.exe                 ← 既存
+├── dinput8.dll              ← 追加 (dipad 同梱)
+├── dipad.ini                ← 追加 (任意)
+└── ...                      ← 既存の MOD (d3d9.dll 等) はそのまま
+```
+
+### 方式B: マニフェスト方式 (非想天則・緋想天など)
+
+`CoCreateInstance(CLSID_DirectInput8, ...)` で DirectInput を生成するゲーム (東方非想天則 / 緋想天など) 向けです。方式A ではこれらのゲームには効きません (import テーブルに `DirectInput8Create` が無く、プロキシ DLL がロードされないため)。
+
+ゲームフォルダに **既に `dinput8.dll` が他 MOD に使われている** 場合も、こちらを使います。
+
+#### 必要なもの (非想天則の例)
 
 - 非想天則 (`th123.exe`)
 - 管理者権限 (1 回のレジストリ設定でのみ必要)
 
-### 手順
+#### 手順 (非想天則)
 
 1. [Releases](https://github.com/stanak/dipad/releases) から最新の ZIP をダウンロードして展開
 2. ZIP 内の **`install\install.reg`** をダブルクリック → UAC で「はい」
@@ -47,19 +95,19 @@
    - (L2/R2 を使う場合) `dipad.ini.sample` を `dipad.ini` にリネームしてコピー
 4. 非想天則を起動
 
-ゲームフォルダの構成:
+#### ゲームフォルダ構成例 (方式B / 非想天則)
 
 ```
 [ゲームフォルダ]
 ├── th123.exe                ← 既存
 ├── th123.exe.manifest       ← 追加 (dipad 同梱)
-├── dipad.dll                  ← 追加 (dipad 同梱)
-├── dipad.manifest             ← 追加 (dipad 同梱)
-├── dipad.ini                  ← 追加 (任意)
+├── dipad.dll                ← 追加 (dipad 同梱)
+├── dipad.manifest           ← 追加 (dipad 同梱)
+├── dipad.ini                ← 追加 (任意)
 └── ...                      ← 既存の MOD はそのまま
 ```
 
-### なぜ `PreferExternalManifest` を有効にする必要があるのか
+#### なぜ `PreferExternalManifest` を有効にする必要があるのか
 
 非想天則の `th123.exe` には **空の埋め込みマニフェスト** が含まれています。Windows は EXE に埋め込みマニフェストがあると、外部の `th123.exe.manifest` を完全に無視するというデフォルト挙動を取ります。
 
@@ -69,7 +117,7 @@
 - 影響範囲: システム全体 (HKLM)
 - 副作用: 他に `<exe名>.manifest` を提供しているツール (古いインストーラ用の互換シム等) も適用されるようになります。問題が出るケースはまずありませんが、心配なら `install/uninstall.reg` で元に戻せます
 
-### 非想天則以外のゲームに使う場合
+#### 非想天則以外のゲームに使う場合 (方式B)
 
 1. ゲームのビット数を確認 (タスクマネージャ → 詳細 → プロセス名に `*32` が付いていれば 32-bit)
 2. `tools\check_embedded_manifest.ps1 <ゲームのexeパス>` で埋め込みマニフェストの有無を確認
@@ -81,12 +129,18 @@
 
 ### アンインストール
 
+**方式A:**
+
+1. ゲームフォルダから `dinput8.dll` (および `dipad.ini`) を削除
+
+**方式B:**
+
 1. ゲームフォルダから `dipad.dll` `dipad.manifest` `<exe名>.manifest` (および `dipad.ini`) を削除
 2. もう他に dipad を使うゲームが無い場合は `install\uninstall.reg` を実行してレジストリ値も削除
 
 ## 設定 `dipad.ini`
 
-`dipad.dll` と同じフォルダ (= ゲームフォルダ) に置きます。すべて省略可能で、書かなければデフォルト値が使われます。
+`dipad.dll` (または `dinput8.dll`) と同じフォルダ (= ゲームフォルダ) に置きます。すべて省略可能で、書かなければデフォルト値が使われます。
 
 非想天則 + L2/R2 を使う場合の推奨設定:
 
@@ -134,6 +188,30 @@ DebugAxisDump = 1
 
 ## 仕組み
 
+### 方式A: dinput8.dll プロキシ
+
+```
+[Game.exe] ──DirectInput8Create()──> 同フォルダの dinput8.dll (dipad プロキシ)
+                                              │
+                                              ├── LoadLibrary("%SystemRoot%\System32\dinput8.dll")
+                                              │         │
+                                              │         v
+                                              │   本物の DirectInput8Create → 本物 IDirectInput8
+                                              │
+                                              v
+                                    本物を内包した wrapper を Game に返す
+                                              │
+                              GetDeviceState 呼び出し時に POV → X/Y 変換
+                              および 軸 → 仮想ボタン変換を適用
+                                              │
+                                              v
+                                    [Game] が方向入力 / 仮想ボタンを認識
+```
+
+Windows の DLL 検索順では **アプリケーションのフォルダが System32 より優先** されるため、ゲームは同フォルダの `dinput8.dll` を読み込みます。プロキシは本物をフルパスで読み込むため、再帰的に自分自身をロードすることはありません。
+
+### 方式B: マニフェスト (Reg-Free COM)
+
 ```
 [Game.exe] ──CoCreateInstance(CLSID_DirectInput8, IID_IDirectInput8A)──> COM
                                                                           │
@@ -166,10 +244,10 @@ DebugAxisDump = 1
 
 詳細は `src/` 配下のソースを参照してください。
 
-## マニフェスト方式の利点
+## マニフェスト方式 (方式B) の利点
 
 - **ゲームバイナリ無改変** — チェックサム検査をパスする
-- **DLL ハイジャック不要** — `d3d9.dll` `dinput8.dll` 等のシステム名を奪わない
+- **`dinput8.dll` ファイル名を奪わない** — 他 MOD が `dinput8.dll` を使っている場合でも共存可能
 - **他ツールと完全共存** — Giuroll, DPadFix, ReShade, dgVoodoo 等と同居可能
 - **プロセス局所** — システム DirectInput には一切干渉しない
 - **公式仕様** — Microsoft の SxS Activation Context (Reg-Free COM)
@@ -201,8 +279,8 @@ cmake --build build/x64 --config Release
 
 成果物:
 
-- `build/x86/Release/dipad.dll` (+ `dipad.manifest`)
-- `build/x64/Release/dipad.dll` (+ `dipad.manifest`)
+- `build/x86/Release/dipad.dll` (+ `dinput8.dll` — 同一バイナリのプロキシ名コピー + `dipad.manifest`)
+- `build/x64/Release/dipad.dll` (+ `dinput8.dll` — 同一バイナリのプロキシ名コピー + `dipad.manifest`)
 
 ### 診断用ヘルパー
 
@@ -210,27 +288,36 @@ cmake --build build/x64 --config Release
 
 ## 制限事項
 
+> v0.2.0 から、ゲームが `SetDataFormat` に渡したデータフォーマットを解析してリマップするため、標準の DIJOYSTATE / DIJOYSTATE2 だけでなく **カスタムデータフォーマットのゲームにも対応** しています。また、リマップ対象はゲームコントローラ (GetCapabilities で判定) のみで、マウス / キーボードには干渉しません。
+
 - **バッファモード入力 (`GetDeviceData`)** は素通しです。一部の古いゲームで効果が薄い可能性があります
 - **DirectInput 7 (`CLSID_DirectInput`)** には未対応。dipad は DirectInput **8** のみ対象
 - 32-bit ゲームには 32-bit DLL、64-bit ゲームには 64-bit DLL を使用してください
+- **`LoadLibrary` に System32 直指定のフルパスを渡す** 稀なゲームでは、方式A (プロキシ) が効きません → 方式B を試してください
 - `Steam Input` を有効にしているゲームでは Steam がコントローラを先に拾うため本ツールが効かない場合があります。Steam の「コントローラ設定」で当該デバイスのサポートを切ってください
 - 一部のオンライン対戦ゲームで、アンチチートが DLL のロードを警戒することがあります。dipad はゲームバイナリには触れませんが、判定は各ゲームの仕様次第です
 
 ## トラブルシュート
 
-### `dipad.log` が生成されない
+### `dipad.log` が生成されない / `dipad_load.log` にエントリが出ない
 
-`%LOCALAPPDATA%\dipad\dipad_load.log` を見てください。**このファイルさえあれば、dipad.dll は確実にゲームプロセスにロードされています**。
+`%LOCALAPPDATA%\dipad\dipad_load.log` を見てください。**このファイルにエントリが出ていれば、dipad は確実にゲームプロセスにロードされています**。
 
 ```powershell
 Get-Content "$env:LOCALAPPDATA\dipad\dipad_load.log" -Encoding Unicode
 ```
 
-ここにエントリが出ていれば:
+#### エントリが出ている場合
 
 - `dipad.ini` に `EnableLog = 1` を書き忘れている可能性 → 設定し直してリトライ
 
-ここにエントリが出ていない場合:
+#### エントリが出ない場合 — 方式A (dinput8.dll プロキシ)
+
+- `dinput8.dll` が **ゲームの exe と同じフォルダ** にあるか確認
+- 32-bit ゲームに `x64\dinput8.dll` (またはその逆) を置いていないか確認
+- ゲームが `LoadLibrary` で System32 直指定のフルパスを使っていないか確認 → 該当する場合は **方式B** を試す
+
+#### エントリが出ない場合 — 方式B (マニフェスト)
 
 - ファイル配置を確認 (`dipad.dll`, `dipad.manifest`, `<exe>.manifest` が揃っているか)
 - 埋め込みマニフェスト対策が必要か確認:

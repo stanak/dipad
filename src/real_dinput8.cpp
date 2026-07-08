@@ -43,6 +43,8 @@ void DoLoad() {
         Resolve<PFN_DllCanUnloadNow>(g_real.module, "DllCanUnloadNow");
     g_real.DllGetClassObject =
         Resolve<PFN_DllGetClassObject>(g_real.module, "DllGetClassObject");
+    g_real.DirectInput8Create =
+        Resolve<PFN_DirectInput8Create>(g_real.module, "DirectInput8Create");
 
     g_loadOk = (g_real.DllGetClassObject != nullptr);
     if (g_loadOk) {

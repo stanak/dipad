@@ -103,10 +103,13 @@ private:
     LONG               m_ref;
     Config             m_cfg;
 
-    // Captured via SetDataFormat so we know whether GetDeviceState payload is
-    // a joystick-shaped buffer.
-    bool   m_isJoystick = false;
-    DWORD  m_dataSize   = 0;
+    // Captured via SetDataFormat: where the axes / POVs / buttons live inside
+    // the application's state buffer (works for both the standard joystick
+    // formats and custom DIDATAFORMATs), plus whether the underlying device
+    // is a game controller at all (so mouse/keyboard devices that happen to
+    // use axis-shaped formats are left untouched).
+    FormatMap m_map;
+    bool      m_isGameController = false;
 
     // Captured via SetProperty(DIPROP_RANGE) for axis X and Y so the POV
     // synthesized values match the game's chosen range.

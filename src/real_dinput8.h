@@ -9,11 +9,13 @@ namespace dipad {
 
 using PFN_DllCanUnloadNow    = HRESULT(WINAPI*)(void);
 using PFN_DllGetClassObject  = HRESULT(WINAPI*)(REFCLSID, REFIID, LPVOID*);
+using PFN_DirectInput8Create = HRESULT(WINAPI*)(HINSTANCE, DWORD, REFIID, LPVOID*, LPUNKNOWN);
 
 struct RealDInput8 {
     HMODULE                 module             = nullptr;
     PFN_DllCanUnloadNow     DllCanUnloadNow    = nullptr;
     PFN_DllGetClassObject   DllGetClassObject  = nullptr;
+    PFN_DirectInput8Create  DirectInput8Create = nullptr;
 };
 
 // Loads the genuine dinput8.dll from %SystemRoot%\System32 (which the WoW64

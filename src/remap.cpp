@@ -3,13 +3,122 @@
 #include "logger.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
-#define DIRECTINPUT_VERSION 0x0800
-#include <dinput.h>
-
 namespace dipad {
+
+// ---------------------------------------------------------------------------
+// Data format parsing
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Buffer accessors. Offsets come from the application's own data format, so
+// they are validated against dwDataSize at parse time.
+LONG ReadAxisAt(const void* buf, int ofs) {
+    LONG v;
+    std::memcpy(&v, static_cast<const char*>(buf) + ofs, sizeof(v));
+    return v;
+}
+
+void WriteAxisAt(void* buf, int ofs, LONG v) {
+    std::memcpy(static_cast<char*>(buf) + ofs, &v, sizeof(v));
+}
+
+DWORD ReadPovAt(const void* buf, int ofs) {
+    DWORD v;
+    std::memcpy(&v, static_cast<const char*>(buf) + ofs, sizeof(v));
+    return v;
+}
+
+const char* AxisName(int i) {
+    static const char* kNames[kNumAxes] = {"x", "y", "z", "rx", "ry", "rz",
+                                           "slider0", "slider1"};
+    return (i >= 0 && i < kNumAxes) ? kNames[i] : "?";
+}
+
+} // namespace
+
+FormatMap ParseDataFormat(const DIDATAFORMAT* lpdf) {
+    FormatMap map;
+    if (!lpdf || !lpdf->rgodf || lpdf->dwNumObjs == 0 || lpdf->dwDataSize == 0)
+        return map;
+    if (lpdf->dwObjSize != sizeof(DIOBJECTDATAFORMAT))
+        return map;
+
+    map.dataSize = lpdf->dwDataSize;
+
+    const auto fits = [&](DWORD ofs, DWORD size) {
+        return ofs + size <= lpdf->dwDataSize;
+    };
+
+    int sliderSeen = 0;
+
+    for (DWORD i = 0; i < lpdf->dwNumObjs; ++i) {
+        const DIOBJECTDATAFORMAT& od = lpdf->rgodf[i];
+
+        if (od.dwType & DIDFT_AXIS) {
+            if (!fits(od.dwOfs, sizeof(LONG))) continue;
+
+            // c_dfDIJoystick2 also declares velocity / acceleration / force
+            // entries for the same axis GUIDs. Only positional data maps to
+            // what the game treats as stick/trigger values.
+            const DWORD aspect = od.dwFlags & DIDOI_ASPECTMASK;
+            if (aspect != 0 && aspect != DIDOI_ASPECTPOSITION) continue;
+
+            int slot = -1;
+            if (od.pguid) {
+                if      (IsEqualGUID(*od.pguid, GUID_XAxis))  slot = static_cast<int>(Axis::X);
+                else if (IsEqualGUID(*od.pguid, GUID_YAxis))  slot = static_cast<int>(Axis::Y);
+                else if (IsEqualGUID(*od.pguid, GUID_ZAxis))  slot = static_cast<int>(Axis::Z);
+                else if (IsEqualGUID(*od.pguid, GUID_RxAxis)) slot = static_cast<int>(Axis::Rx);
+                else if (IsEqualGUID(*od.pguid, GUID_RyAxis)) slot = static_cast<int>(Axis::Ry);
+                else if (IsEqualGUID(*od.pguid, GUID_RzAxis)) slot = static_cast<int>(Axis::Rz);
+                else if (IsEqualGUID(*od.pguid, GUID_Slider)) {
+                    slot = static_cast<int>(Axis::Slider0) + std::min(sliderSeen, 1);
+                    ++sliderSeen;
+                } else {
+                    continue; // some exotic axis we do not model
+                }
+            } else {
+                // NULL GUID = "any axis". DirectInput assigns device objects
+                // in enumeration order; approximate with the first canonical
+                // slot that is still free.
+                for (int s = 0; s < kNumAxes; ++s) {
+                    if (map.axisOfs[s] < 0) { slot = s; break; }
+                }
+            }
+            if (slot >= 0 && map.axisOfs[slot] < 0) {
+                map.axisOfs[slot] = static_cast<int>(od.dwOfs);
+            }
+        } else if (od.dwType & DIDFT_POV) {
+            if (!fits(od.dwOfs, sizeof(DWORD))) continue;
+            if (od.pguid && !IsEqualGUID(*od.pguid, GUID_POV)) continue;
+            if (map.povCount < kMaxPovs) {
+                map.povOfs[map.povCount++] = static_cast<int>(od.dwOfs);
+            }
+        } else if (od.dwType & DIDFT_BUTTON) {
+            if (!fits(od.dwOfs, sizeof(BYTE))) continue;
+            // Exclude keyboard formats (GUID_Key). Joystick button entries
+            // use GUID_Button or a NULL "any object" GUID.
+            if (od.pguid && !IsEqualGUID(*od.pguid, GUID_Button)) continue;
+            if (map.buttonOfs.size() < 128) {
+                map.buttonOfs.push_back(static_cast<int>(od.dwOfs));
+            }
+        }
+    }
+
+    const bool hasXY = map.axisOfs[static_cast<int>(Axis::X)] >= 0 &&
+                       map.axisOfs[static_cast<int>(Axis::Y)] >= 0;
+    map.parsed = hasXY || map.povCount > 0 || !map.buttonOfs.empty();
+    return map;
+}
+
+// ---------------------------------------------------------------------------
+// POV → X/Y
+// ---------------------------------------------------------------------------
 
 namespace {
 
@@ -95,71 +204,50 @@ void ApplyOn(LONG& lX, LONG& lY,
 } // namespace
 
 void ApplyPovToStick(void* buffer,
-                     std::size_t cbData,
+                     const FormatMap& map,
                      const Config& cfg,
                      const AxisRange& xRange,
                      const AxisRange& yRange) {
-    if (!buffer) return;
+    if (!buffer || !map.parsed || map.povCount == 0) return;
 
-    const int idx = std::clamp(cfg.povIndex, 0, 3);
+    const int xOfs = map.axisOfs[static_cast<int>(Axis::X)];
+    const int yOfs = map.axisOfs[static_cast<int>(Axis::Y)];
+    if (xOfs < 0 && yOfs < 0) return;
 
-    if (cbData == sizeof(DIJOYSTATE)) {
-        auto* s = static_cast<DIJOYSTATE*>(buffer);
-        ApplyOn(s->lX, s->lY, s->rgdwPOV[idx], cfg, xRange, yRange);
-    } else if (cbData == sizeof(DIJOYSTATE2)) {
-        auto* s = static_cast<DIJOYSTATE2*>(buffer);
-        ApplyOn(s->lX, s->lY, s->rgdwPOV[idx], cfg, xRange, yRange);
-    }
-    // Any other format (keyboard / mouse / custom) is passed through unchanged.
+    const int idx = std::clamp(cfg.povIndex, 0, map.povCount - 1);
+    const DWORD pov = ReadPovAt(buffer, map.povOfs[idx]);
+
+    LONG lX = (xOfs >= 0) ? ReadAxisAt(buffer, xOfs) : 0;
+    LONG lY = (yOfs >= 0) ? ReadAxisAt(buffer, yOfs) : 0;
+
+    ApplyOn(lX, lY, pov, cfg, xRange, yRange);
+
+    if (xOfs >= 0) WriteAxisAt(buffer, xOfs, lX);
+    if (yOfs >= 0) WriteAxisAt(buffer, yOfs, lY);
 }
 
 // ---------------------------------------------------------------------------
 // Axis → synthetic button (L2/R2 bridge)
 // ---------------------------------------------------------------------------
 
-namespace {
+void ApplyAxisToButtons(void* buffer, const FormatMap& map, const Config& cfg) {
+    if (!buffer || !map.parsed) return;
+    if (cfg.axisButtons.empty() || map.buttonOfs.empty()) return;
 
-template <typename State>
-LONG ReadAxis(const State& s, Axis a) {
-    switch (a) {
-    case Axis::X:       return s.lX;
-    case Axis::Y:       return s.lY;
-    case Axis::Z:       return s.lZ;
-    case Axis::Rx:      return s.lRx;
-    case Axis::Ry:      return s.lRy;
-    case Axis::Rz:      return s.lRz;
-    case Axis::Slider0: return s.rglSlider[0];
-    case Axis::Slider1: return s.rglSlider[1];
-    }
-    return 0;
-}
-
-template <typename State, std::size_t Buttons>
-void ApplyButtons(State& s, const Config& cfg, BYTE (&buttons)[Buttons]) {
     for (const auto& ab : cfg.axisButtons) {
-        const LONG v = ReadAxis(s, ab.axis);
+        const int axisOfs = map.axisOfs[static_cast<int>(ab.axis)];
+        if (axisOfs < 0) continue;
+
+        const LONG v = ReadAxisAt(buffer, axisOfs);
         const bool active = (ab.sign >= 0)
             ? (v >=  ab.threshold)
             : (v <= -ab.threshold);
         if (!active) continue;
+
         if (ab.button < 0) continue;
-        if (static_cast<std::size_t>(ab.button) >= Buttons) continue;
-        buttons[ab.button] = 0x80;
-    }
-}
+        if (static_cast<std::size_t>(ab.button) >= map.buttonOfs.size()) continue;
 
-} // namespace
-
-void ApplyAxisToButtons(void* buffer, std::size_t cbData, const Config& cfg) {
-    if (!buffer) return;
-    if (cfg.axisButtons.empty()) return;
-
-    if (cbData == sizeof(DIJOYSTATE)) {
-        auto* s = static_cast<DIJOYSTATE*>(buffer);
-        ApplyButtons(*s, cfg, s->rgbButtons);
-    } else if (cbData == sizeof(DIJOYSTATE2)) {
-        auto* s = static_cast<DIJOYSTATE2*>(buffer);
-        ApplyButtons(*s, cfg, s->rgbButtons);
+        static_cast<BYTE*>(buffer)[map.buttonOfs[ab.button]] = 0x80;
     }
 }
 
@@ -167,83 +255,48 @@ void ApplyAxisToButtons(void* buffer, std::size_t cbData, const Config& cfg) {
 // AxisDebugDumper
 // ---------------------------------------------------------------------------
 
-namespace {
+void AxisDebugDumper::Dump(const void* buffer, const FormatMap& map) {
+    if (!buffer || !map.parsed) return;
 
-// Common axis fields shared between DIJOYSTATE and DIJOYSTATE2 — both layouts
-// place these in the same offsets, so a single helper template works for both.
-template <typename State, std::size_t Buttons>
-struct StateView {
-    long lX, lY, lZ;
-    long lRx, lRy, lRz;
-    long slider0, slider1;
-    unsigned long pov0;
-    const BYTE (&buttons)[Buttons];
-};
+    long axes[kNumAxes] = {};
+    for (int i = 0; i < kNumAxes; ++i) {
+        axes[i] = (map.axisOfs[i] >= 0) ? ReadAxisAt(buffer, map.axisOfs[i]) : 0;
+    }
 
-} // namespace
-
-void AxisDebugDumper::Dump(const void* buffer, std::size_t cbData) {
-    if (!buffer) return;
-
-    long lX = 0, lY = 0, lZ = 0, lRx = 0, lRy = 0, lRz = 0, s0 = 0, s1 = 0;
-    unsigned long pov0 = 0xFFFFFFFFu;
+    const unsigned long pov0 =
+        (map.povCount > 0) ? ReadPovAt(buffer, map.povOfs[0]) : 0xFFFFFFFFu;
 
     unsigned long long maskLo = 0, maskHi = 0;
     char btnList[256] = {};
     int  off = 0;
-
-    auto recordButtons = [&](const BYTE* btns, std::size_t n) {
-        for (std::size_t i = 0; i < n && i < 64; ++i) {
-            if (btns[i] & 0x80) maskLo |= (1ull << i);
-        }
-        for (std::size_t i = 64; i < n; ++i) {
-            if (btns[i] & 0x80) maskHi |= (1ull << (i - 64));
-        }
-        for (std::size_t i = 0; i < n; ++i) {
-            if (btns[i] & 0x80) {
-                int w = std::snprintf(btnList + off,
-                                      sizeof(btnList) - off,
-                                      "%s%zu", off == 0 ? "" : ",", i);
-                if (w <= 0 || off + w >= static_cast<int>(sizeof(btnList))) break;
-                off += w;
-            }
-        }
-    };
-
-    if (cbData == sizeof(DIJOYSTATE)) {
-        auto* s = static_cast<const DIJOYSTATE*>(buffer);
-        lX = s->lX; lY = s->lY; lZ = s->lZ;
-        lRx = s->lRx; lRy = s->lRy; lRz = s->lRz;
-        s0 = s->rglSlider[0]; s1 = s->rglSlider[1];
-        pov0 = s->rgdwPOV[0];
-        recordButtons(s->rgbButtons, 32);
-    } else if (cbData == sizeof(DIJOYSTATE2)) {
-        auto* s = static_cast<const DIJOYSTATE2*>(buffer);
-        lX = s->lX; lY = s->lY; lZ = s->lZ;
-        lRx = s->lRx; lRy = s->lRy; lRz = s->lRz;
-        s0 = s->rglSlider[0]; s1 = s->rglSlider[1];
-        pov0 = s->rgdwPOV[0];
-        recordButtons(s->rgbButtons, 128);
-    } else {
-        return;
+    for (std::size_t i = 0; i < map.buttonOfs.size(); ++i) {
+        const bool pressed =
+            (static_cast<const BYTE*>(buffer)[map.buttonOfs[i]] & 0x80) != 0;
+        if (!pressed) continue;
+        if (i < 64) maskLo |= (1ull << i);
+        else        maskHi |= (1ull << (i - 64));
+        int w = std::snprintf(btnList + off, sizeof(btnList) - off,
+                              "%s%zu", off == 0 ? "" : ",", i);
+        if (w <= 0 || off + w >= static_cast<int>(sizeof(btnList))) break;
+        off += w;
     }
 
-    const bool changed = !m_haveBaseline ||
-        lX != m_lastX || lY != m_lastY || lZ != m_lastZ ||
-        lRx != m_lastRx || lRy != m_lastRy || lRz != m_lastRz ||
-        s0 != m_lastSlider0 || s1 != m_lastSlider1 ||
+    bool changed = !m_haveBaseline ||
         pov0 != m_lastPov ||
         maskLo != m_lastButtonMaskLo || maskHi != m_lastButtonMaskHi;
+    for (int i = 0; i < kNumAxes && !changed; ++i) {
+        changed = (axes[i] != m_lastAxis[i]);
+    }
     if (!changed) return;
 
     if (off == 0) std::snprintf(btnList, sizeof(btnList), "-");
 
-    Log("[axis-dump] X=%ld Y=%ld Z=%ld | Rx=%ld Ry=%ld Rz=%ld | S0=%ld S1=%ld | POV0=0x%08lX | btns=%s",
-        lX, lY, lZ, lRx, lRy, lRz, s0, s1, pov0, btnList);
+    Log("[axis-dump] %s=%ld %s=%ld %s=%ld | %s=%ld %s=%ld %s=%ld | %s=%ld %s=%ld | POV0=0x%08lX | btns=%s",
+        AxisName(0), axes[0], AxisName(1), axes[1], AxisName(2), axes[2],
+        AxisName(3), axes[3], AxisName(4), axes[4], AxisName(5), axes[5],
+        AxisName(6), axes[6], AxisName(7), axes[7], pov0, btnList);
 
-    m_lastX = lX; m_lastY = lY; m_lastZ = lZ;
-    m_lastRx = lRx; m_lastRy = lRy; m_lastRz = lRz;
-    m_lastSlider0 = s0; m_lastSlider1 = s1;
+    std::memcpy(m_lastAxis, axes, sizeof(axes));
     m_lastPov = pov0;
     m_lastButtonMaskLo = maskLo;
     m_lastButtonMaskHi = maskHi;

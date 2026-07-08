@@ -33,6 +33,7 @@ jobs:
         run: |
           dir build\Release
           (Get-Item build\Release\dipad.dll).Length
+          (Get-Item build\Release\dinput8.dll).Length
           Get-Content build\Release\dipad.manifest
 
       - name: Upload artifact
@@ -41,6 +42,7 @@ jobs:
           name: dipad-${{ matrix.arch }}
           path: |
             build/Release/dipad.dll
+            build/Release/dinput8.dll
             build/Release/dipad.manifest
 
   release:
@@ -72,8 +74,10 @@ jobs:
           mkdir -p release/dipad/x86 release/dipad/x64 \
                    release/dipad/manifests release/dipad/install release/dipad/tools
           cp artifacts/x86/dipad.dll       release/dipad/x86/dipad.dll
+          cp artifacts/x86/dinput8.dll     release/dipad/x86/dinput8.dll
           cp artifacts/x86/dipad.manifest  release/dipad/x86/dipad.manifest
           cp artifacts/x64/dipad.dll       release/dipad/x64/dipad.dll
+          cp artifacts/x64/dinput8.dll     release/dipad/x64/dinput8.dll
           cp artifacts/x64/dipad.manifest  release/dipad/x64/dipad.manifest
           cp manifests/th123.exe.manifest      release/dipad/manifests/
           cp manifests/sample-x86.exe.manifest release/dipad/manifests/
